@@ -1,0 +1,308 @@
+<?xml version="1.0"?>
+<!--
+  ros2_control hardware-side description for the BAR Lite humanoid.
+
+  Selects between three hardware backends via xacro args (use_sim wins
+  if both are true, matching the franka_ros2 / Universal_Robots_ROS2_Driver
+  precedence convention):
+
+    use_sim:=true            -> mujoco_ros2_control/MujocoSystem  (single block,
+                                                                   all simulated joints)
+    use_fake_hardware:=true  -> mock_components/GenericSystem     (single block)
+    (neither)                -> bar_robstride/RobstrideSystem  (TWO blocks,
+                                                                   one per bus)
+
+  Real-hardware bus layout (verified on physical Lite via robstride_discover):
+    can_interface_left  (can0) : left arm,  ids 11..17 (+ gripper id 18)
+    can_interface_right (can1) : right arm, ids 21..27 (+ gripper id 28)
+
+  Per-joint static config (model, direction, position limits, torque/current
+  caps) is mirrored from the Lite-Lowlevel-Python bimanual.yaml — keep it
+  here so the URDF is self-describing and bar_robstride doesn't need a
+  parallel YAML config. Per-physical-robot homing offsets are *not* baked in
+  here; they live in lite_config/calibration.yaml and are
+  loaded by the plugin at on_configure.
+
+  Neck: kinematic links are in lite.urdf.xacro for robot_state_publisher, but
+  the neck actuators were not present on the bus during initial bringup.
+  Restore the third <ros2_control> block when the neck hardware is wired up.
+
+  Per AGENTS.md "Hardware components", every joint exposes:
+    state interfaces   : position, velocity, effort
+    command interfaces : position, velocity, effort, stiffness, damping  (MIT mode)
+  MujocoSystem computes the same MIT-mode torque
+    tau = stiffness*(pos_cmd-pos) + damping*(vel_cmd-vel) + effort_cmd
+  and applies it via qfrc_applied, so the controller code is unchanged.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Single joint: 5 MIT-mode command interfaces, 3 state interfaces.
+    Per-joint static config (can_id, model, direction, limits, torque/current
+    caps) is only emitted on the real-hardware path; mock and sim plugins
+    ignore unknown joint params but we keep the URDF clean.
+  -->
+  <xacro:macro name="lite_joint"
+               params="name can_id model direction
+                       lower_limit upper_limit torque_limit current_limit
+                       use_fake_hardware use_sim interface_type:=joint_position">
+    <joint name="${name}">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
+      <command_interface name="stiffness"/>
+      <command_interface name="damping"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+      <xacro:unless value="${use_sim or use_fake_hardware}">
+        <param name="can_id">${can_id}</param>
+        <param name="model">${model}</param>
+        <param name="direction">${direction}</param>
+        <param name="lower_limit">${lower_limit}</param>
+        <param name="upper_limit">${upper_limit}</param>
+        <param name="torque_limit">${torque_limit}</param>
+        <param name="current_limit">${current_limit}</param>
+        <param name="interface_type">${interface_type}</param>
+      </xacro:unless>
+    </joint>
+  </xacro:macro>
+
+  <!--
+    Per-joint config in a single macro so the combined + per-bus blocks
+    stay in sync. Order and values mirror Lite-Lowlevel-Python's
+    configs/bimanual.yaml verbatim.
+  -->
+  <xacro:macro name="lite_left_arm_joints" params="use_fake_hardware use_sim">
+    <xacro:lite_joint name="left_shoulder_pitch" can_id="11" model="rs-02" direction="-1"
+                      lower_limit="-3.141592653589793" upper_limit="0.7853981633974483"
+                      torque_limit="17" current_limit="27"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="left_shoulder_roll" can_id="12" model="rs-00" direction="-1"
+                      lower_limit="-1.5707963267948966" upper_limit="1.9198621771937625"
+                      torque_limit="14" current_limit="16"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="left_shoulder_yaw" can_id="13" model="rs-00" direction="1"
+                      lower_limit="-1.5707963267948966" upper_limit="1.5707963267948966"
+                      torque_limit="14" current_limit="16"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="left_elbow_pitch" can_id="14" model="rs-00" direction="-1"
+                      lower_limit="-2.356194490192345" upper_limit="0.0"
+                      torque_limit="14" current_limit="16"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="left_wrist_yaw" can_id="15" model="rs-05" direction="1"
+                      lower_limit="-1.5707963267948966" upper_limit="1.5707963267948966"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="left_wrist_roll" can_id="16" model="rs-05" direction="-1"
+                      lower_limit="-0.6981317007977318" upper_limit="0.6981317007977318"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="left_wrist_pitch" can_id="17" model="rs-05" direction="-1"
+                      lower_limit="-0.7853981633974483" upper_limit="0.7853981633974483"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+  </xacro:macro>
+
+  <xacro:macro name="lite_right_arm_joints" params="use_fake_hardware use_sim">
+    <xacro:lite_joint name="right_shoulder_pitch" can_id="21" model="rs-02" direction="1"
+                      lower_limit="-3.141592653589793" upper_limit="0.7853981633974483"
+                      torque_limit="17" current_limit="27"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="right_shoulder_roll" can_id="22" model="rs-00" direction="-1"
+                      lower_limit="-1.9198621771937625" upper_limit="1.5707963267948966"
+                      torque_limit="14" current_limit="16"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="right_shoulder_yaw" can_id="23" model="rs-00" direction="1"
+                      lower_limit="-1.5707963267948966" upper_limit="1.5707963267948966"
+                      torque_limit="14" current_limit="16"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="right_elbow_pitch" can_id="24" model="rs-00" direction="-1"
+                      lower_limit="0.0" upper_limit="2.356194490192345"
+                      torque_limit="14" current_limit="16"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="right_wrist_yaw" can_id="25" model="rs-05" direction="1"
+                      lower_limit="-1.5707963267948966" upper_limit="1.5707963267948966"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="right_wrist_roll" can_id="26" model="rs-05" direction="1"
+                      lower_limit="-0.6981317007977318" upper_limit="0.6981317007977318"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+    <xacro:lite_joint name="right_wrist_pitch" can_id="27" model="rs-05" direction="-1"
+                      lower_limit="-0.7853981633974483" upper_limit="0.7853981633974483"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+  </xacro:macro>
+
+  <!--
+    Gripper joint block (mode=arms_grippers only). Defaults assume one
+    Robstride-style actuator per hand on the same CAN bus as its arm:
+    left_gripper id 18, right_gripper id 28. The ROS-facing position follows
+    sensor_msgs/JointState units for prismatic joints: meters, matching the
+    URDF 0.047 m finger travel. The raw actuator endpoints live in
+    calibration.yaml as closed_position/open_position.
+  -->
+  <xacro:macro name="lite_left_gripper_joint" params="use_fake_hardware use_sim">
+    <xacro:lite_joint name="left_gripper" can_id="18" model="rs-05" direction="1"
+                      lower_limit="0.0" upper_limit="0.047"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"
+                      interface_type="gripper_opening"/>
+  </xacro:macro>
+
+  <xacro:macro name="lite_right_gripper_joint" params="use_fake_hardware use_sim">
+    <xacro:lite_joint name="right_gripper" can_id="28" model="rs-05" direction="1"
+                      lower_limit="0.0" upper_limit="0.047"
+                      torque_limit="4.0" current_limit="14"
+                      use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"
+                      interface_type="gripper_opening"/>
+  </xacro:macro>
+
+  <!--
+    Neck joint block (mode=arms_neck only). Stub today — populate with
+    the three neck joints (yaw / roll / pitch) when the neck CAN ids,
+    model codes, and mechanical limits are confirmed on silicon. CAN
+    ids 31..33 are reserved by convention; the bus assignment is in
+    bar_bringup_lite/launch/real.launch.py (today shared with the left
+    arm interface; adds a third `buses.can_interface_neck` entry in
+    lite_hardware.yaml when separated).
+  -->
+  <xacro:macro name="lite_neck_joints" params="use_fake_hardware use_sim">
+    <!-- TODO(R-E5): real neck joint declarations land here. -->
+  </xacro:macro>
+
+  <!--
+    Combined-bus single-block layout for sim and mock backends. Real CAN
+    bringup uses the per-bus blocks below; we keep this branch because the
+    upstream MujocoSystem and mock_components want one ros2_control instance
+    that owns every joint.
+  -->
+  <xacro:macro name="lite_ros2_control_combined" params="name mode use_fake_hardware use_sim">
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <xacro:if value="${use_sim}">
+          <plugin>mujoco_ros2_control/MujocoSystem</plugin>
+        </xacro:if>
+        <xacro:unless value="${use_sim}">
+          <plugin>mock_components/GenericSystem</plugin>
+        </xacro:unless>
+      </hardware>
+      <xacro:lite_left_arm_joints  use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+      <xacro:lite_right_arm_joints use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+      <!-- Sim and mock hardware expose the same arms+grippers joint set. -->
+      <xacro:if value="${mode == 'arms_grippers'}">
+        <xacro:lite_left_gripper_joint  use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+        <xacro:lite_right_gripper_joint use_fake_hardware="${use_fake_hardware}" use_sim="${use_sim}"/>
+      </xacro:if>
+    </ros2_control>
+  </xacro:macro>
+
+  <!--
+    Real-hardware: two ros2_control blocks, one per physical CAN bus. The
+    controller_manager runs both plugin instances concurrently and exposes
+    a single flat joint list to controllers — they don't see the split.
+
+    calibration_file is a hardware-level param (same value on both blocks)
+    pointing at a YAML dict. Arm joints use homing_offset; gripper joints
+    use gripper_opening endpoints. The plugin ignores a missing file
+    (identity mapping, direction still applies). See AGENTS.md
+    "Hardware components".
+  -->
+  <!--
+    Macro for one Robstride bus. `side` selects which arm's joint block
+    is emitted; the hardware-component name and per-side joint macro
+    are derived from it. Adding the neck bus when those actuators land
+    can be a parallel `side="neck"` branch (plus a matching joint
+    macro). Keeps the two arm blocks from drifting apart silently.
+  -->
+  <xacro:macro name="lite_robstride_bus"
+               params="side mode can_interface calibration_file">
+    <xacro:if value="${side == 'left'}">
+      <ros2_control name="LiteLeftArm" type="system">
+        <hardware>
+          <plugin>bar_robstride/RobstrideSystem</plugin>
+          <param name="can_interface">${can_interface}</param>
+          <param name="calibration_file">${calibration_file}</param>
+        </hardware>
+        <xacro:lite_left_arm_joints use_fake_hardware="false" use_sim="false"/>
+        <xacro:if value="${mode == 'arms_grippers'}">
+          <xacro:lite_left_gripper_joint use_fake_hardware="false" use_sim="false"/>
+        </xacro:if>
+      </ros2_control>
+    </xacro:if>
+    <xacro:if value="${side == 'right'}">
+      <ros2_control name="LiteRightArm" type="system">
+        <hardware>
+          <plugin>bar_robstride/RobstrideSystem</plugin>
+          <param name="can_interface">${can_interface}</param>
+          <param name="calibration_file">${calibration_file}</param>
+        </hardware>
+        <xacro:lite_right_arm_joints use_fake_hardware="false" use_sim="false"/>
+        <xacro:if value="${mode == 'arms_grippers'}">
+          <xacro:lite_right_gripper_joint use_fake_hardware="false" use_sim="false"/>
+        </xacro:if>
+      </ros2_control>
+    </xacro:if>
+  </xacro:macro>
+
+  <xacro:macro name="lite_ros2_control_real"
+               params="mode can_interface_left can_interface_right calibration_file">
+    <xacro:lite_robstride_bus side="left"
+                              mode="${mode}"
+                              can_interface="${can_interface_left}"
+                              calibration_file="${calibration_file}"/>
+    <xacro:lite_robstride_bus side="right"
+                              mode="${mode}"
+                              can_interface="${can_interface_right}"
+                              calibration_file="${calibration_file}"/>
+    <!--
+      mode=arms_neck adds a third <ros2_control> block for the neck bus.
+      mode=arms (default) skips it — physical Lite did not have neck
+      actuators on the bus during initial bringup. The neck joint macro
+      (lite_neck_joints) is itself a stub for now; populate it with the
+      three neck joints when their CAN ids + URDF kinematics land.
+
+      A separate can_interface for the neck would be a follow-up
+      (lite_hardware.yaml's `buses:` gains a can_interface_neck key);
+      today the neck lives on can_interface_left by convention until
+      silicon proves otherwise.
+    -->
+    <xacro:if value="${mode == 'arms_neck'}">
+      <ros2_control name="LiteNeck" type="system">
+        <hardware>
+          <plugin>bar_robstride/RobstrideSystem</plugin>
+          <param name="can_interface">${can_interface_left}</param>
+          <param name="calibration_file">${calibration_file}</param>
+        </hardware>
+        <xacro:lite_neck_joints use_fake_hardware="false" use_sim="false"/>
+      </ros2_control>
+    </xacro:if>
+  </xacro:macro>
+
+  <!--
+    Top-level dispatch — picks the combined-bus block for sim/mock or the
+    two real-hardware blocks. calibration_file is only consumed on the real
+    path; pass-through is harmless for sim/mock.
+  -->
+  <xacro:macro name="lite_ros2_control"
+               params="name use_fake_hardware use_sim mode
+                       can_interface_left can_interface_right
+                       calibration_file">
+    <xacro:if value="${use_sim or use_fake_hardware}">
+      <xacro:lite_ros2_control_combined
+        name="${name}"
+        mode="${mode}"
+        use_fake_hardware="${use_fake_hardware}"
+        use_sim="${use_sim}"/>
+    </xacro:if>
+    <xacro:unless value="${use_sim or use_fake_hardware}">
+      <xacro:lite_ros2_control_real
+        mode="${mode}"
+        can_interface_left="${can_interface_left}"
+        can_interface_right="${can_interface_right}"
+        calibration_file="${calibration_file}"/>
+    </xacro:unless>
+  </xacro:macro>
+
+</robot>

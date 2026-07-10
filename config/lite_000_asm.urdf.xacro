@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="lite_000_asm">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+
+    <!-- Import lite_000_asm urdf file -->
+    <xacro:include filename="$(find lite_moveit2)/urdf/lite.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="lite_000_asm.ros2_control.xacro" />
+
+
+    <xacro:lite_000_asm_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>
