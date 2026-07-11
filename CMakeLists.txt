@@ -26,6 +26,10 @@ install(PROGRAMS
   scripts/move_to_pose
   scripts/translate_right_arm
   DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS
+  scripts/move_arm_to_pose.sh
+  scripts/translate_right_arm.sh
+  DESTINATION share/${PROJECT_NAME}/scripts)
 install(FILES .setup_assistant DESTINATION share/${PROJECT_NAME})
 
 ament_package()
