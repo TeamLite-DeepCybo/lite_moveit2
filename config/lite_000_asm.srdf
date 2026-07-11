@@ -106,6 +106,24 @@
     <group_state name="close" group="right_gripper">
         <joint name="right_gripper" value="0"/>
     </group_state>
+    <group_state name="selfie" group="left_arm">
+        <joint name="left_elbow_pitch" value="0"/>
+        <joint name="left_shoulder_pitch" value="0"/>
+        <joint name="left_shoulder_roll" value="-1.2"/>
+        <joint name="left_shoulder_yaw" value="0"/>
+        <joint name="left_wrist_pitch" value="0"/>
+        <joint name="left_wrist_roll" value="0"/>
+        <joint name="left_wrist_yaw" value="0"/>
+    </group_state>
+    <group_state name="selfie" group="right_arm">
+        <joint name="right_elbow_pitch" value="2.0177"/>
+        <joint name="right_shoulder_pitch" value="-0.6466"/>
+        <joint name="right_shoulder_roll" value="1"/>
+        <joint name="right_shoulder_yaw" value="0"/>
+        <joint name="right_wrist_pitch" value="-0.6465"/>
+        <joint name="right_wrist_roll" value="0"/>
+        <joint name="right_wrist_yaw" value="0.7"/>
+    </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="left_ee" parent_link="left_gripper_tip_middle_link" group="left_gripper" parent_group="left_arm"/>
     <end_effector name="right_ee" parent_link="right_gripper_tip_middle_link" group="right_gripper" parent_group="right_arm"/>
