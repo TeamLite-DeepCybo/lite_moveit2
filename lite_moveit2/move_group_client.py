@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Iterable
 
 import rclpy
@@ -193,13 +194,7 @@ class MoveGroupClient:
             )
 
     def _lookup_pose(self, target_frame: str, source_frame: str) -> Pose:
-        if not self._tf_buffer.can_transform(
-            target_frame, source_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=2.0)
-        ):
-            raise RuntimeError(
-                f'TF unavailable: {target_frame} <- {source_frame}. '
-                'Is move_group / robot_state_publisher running?'
-            )
+        self._wait_for_transform(target_frame, source_frame)
         transform = self._tf_buffer.lookup_transform(
             target_frame, source_frame, rclpy.time.Time()
         )
@@ -209,6 +204,27 @@ class MoveGroupClient:
         pose.position.z = transform.transform.translation.z
         pose.orientation = transform.transform.rotation
         return pose
+
+    def _wait_for_transform(
+        self,
+        target_frame: str,
+        source_frame: str,
+        timeout_sec: float = 10.0,
+    ) -> None:
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok() and time.monotonic() < deadline:
+            if self._tf_buffer.can_transform(
+                target_frame,
+                source_frame,
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=0.0),
+            ):
+                return
+            rclpy.spin_once(self._node, timeout_sec=0.1)
+        raise RuntimeError(
+            f'TF unavailable: {target_frame} <- {source_frame}. '
+            'Is move_group / robot_state_publisher running?'
+        )
 
     def _offset_pose(
         self,
@@ -234,7 +250,7 @@ class MoveGroupClient:
     def _offset_in_ee_frame(self, start_pose: Pose, dx: float, dy: float, dz: float) -> Pose:
         # Rotate the local translation by the EE orientation, keep orientation fixed.
         q = start_pose.orientation
-        x, y, z = q.x, q.y, q.z, q.w
+        x, y, z, w = q.x, q.y, q.z, q.w
         rot = [
             [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
             [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
