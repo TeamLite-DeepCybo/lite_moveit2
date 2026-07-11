@@ -71,4 +71,14 @@ source /opt/ros/jazzy/setup.bash
 # shellcheck source=/dev/null
 source "${WS_ROOT}/install/setup.bash"
 
+# shellcheck source=/dev/null
+source "${WS_ROOT}/install/setup.bash"
+
+if ! ros2 node list 2>/dev/null | grep -q move_group; then
+  echo "error: move_group is not running." >&2
+  echo "Start demo in another terminal first:" >&2
+  echo "  ${WS_ROOT}/scripts/start_moveit_demo.sh" >&2
+  exit 1
+fi
+
 exec ros2 run lite_moveit2 move_to_pose "$@"
