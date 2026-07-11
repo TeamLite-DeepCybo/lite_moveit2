@@ -68,4 +68,17 @@ fi
 source "${WS_ROOT}/scripts/ros_env.sh"
 ros_source_env "${WS_ROOT}"
 
+if ! ros2 node list 2>/dev/null | grep -q move_group; then
+  echo "error: move_group is not running." >&2
+  echo "Start demo in another terminal first:" >&2
+  echo "  ${WS_ROOT}/scripts/start_moveit_demo.sh" >&2
+  exit 1
+fi
+
+if ! ros2 control list_controllers 2>/dev/null | grep -E '^right_arm_controller[[:space:]].*active' >/dev/null; then
+  echo "error: right_arm_controller not active yet." >&2
+  echo "Wait ~60s after demo start, or run: ${WS_ROOT}/scripts/check_moveit.sh" >&2
+  exit 1
+fi
+
 exec ros2 run lite_moveit2 translate_right_arm "$@"

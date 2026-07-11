@@ -22,8 +22,13 @@ def main(argv: list[str] | None = None) -> int:
         default='ee',
         help='Interpret dx/dy/dz in EE-local or world frame',
     )
-    parser.add_argument('--eef-step', type=float, default=0.01)
+    parser.add_argument('--eef-step', type=float, default=0.005)
     parser.add_argument('--min-fraction', type=float, default=0.95)
+    parser.add_argument(
+        '--avoid-collisions',
+        action='store_true',
+        help='Enable collision checking during Cartesian interpolation (default: off)',
+    )
     args = parser.parse_args(argv)
 
     if args.dx == 0.0 and args.dy == 0.0 and args.dz == 0.0:
@@ -44,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
             frame=args.frame,
             eef_step=args.eef_step,
             min_fraction=args.min_fraction,
+            avoid_collisions=args.avoid_collisions,
         )
         node.get_logger().info(f'Cartesian motion completed (fraction={fraction:.1%})')
         return 0

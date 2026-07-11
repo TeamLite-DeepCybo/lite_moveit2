@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Iterable
 
 import rclpy
+from controller_manager_msgs.srv import ListControllers
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
@@ -21,6 +23,12 @@ SUCCESS = MoveItErrorCodes.SUCCESS
 
 RIGHT_EE_LINK = 'right_gripper_tip_middle_link'
 PLANNING_FRAME = 'world'
+CARTESIAN_SEGMENT_M = 0.02
+REQUIRED_ACTIVE_CONTROLLERS = (
+    'right_arm_controller',
+    'left_arm_controller',
+    'joint_state_broadcaster',
+)
 
 
 class MoveGroupClient:
@@ -44,6 +52,32 @@ class MoveGroupClient:
             raise RuntimeError('execute action /execute_trajectory not available')
         if not self._cartesian_client.wait_for_service(timeout_sec=timeout_sec):
             raise RuntimeError('service /compute_cartesian_path not available')
+        self._wait_for_controllers(timeout_sec=max(timeout_sec, 90.0))
+
+    def _wait_for_controllers(self, timeout_sec: float) -> None:
+        deadline = time.monotonic() + timeout_sec
+        list_client = self._node.create_client(
+            ListControllers, '/controller_manager/list_controllers'
+        )
+        while rclpy.ok() and time.monotonic() < deadline:
+            if list_client.wait_for_service(timeout_sec=0.0):
+                request = ListControllers.Request()
+                future = list_client.call_async(request)
+                rclpy.spin_until_future_complete(self._node, future, timeout_sec=1.0)
+                response = future.result()
+                if response is not None:
+                    active = {
+                        c.name
+                        for c in response.controller
+                        if c.state == 'active'
+                    }
+                    if all(name in active for name in REQUIRED_ACTIVE_CONTROLLERS):
+                        return
+            rclpy.spin_once(self._node, timeout_sec=0.2)
+        raise RuntimeError(
+            'Trajectory controllers not active yet. '
+            'Wait ~60s after demo start, or run scripts/check_moveit.sh.'
+        )
 
     def move_to_named_pose(
         self,
@@ -70,28 +104,38 @@ class MoveGroupClient:
         dz: float,
         *,
         frame: str = 'ee',
-        eef_step: float = 0.01,
+        eef_step: float = 0.005,
         jump_threshold: float = 0.0,
         min_fraction: float = 0.95,
+        avoid_collisions: bool = False,
     ) -> float:
         """Translate the right EE by (dx, dy, dz) meters. Returns path fraction."""
-        start_pose = self._lookup_pose(PLANNING_FRAME, RIGHT_EE_LINK)
-        target_pose = self._offset_pose(start_pose, dx, dy, dz, frame=frame)
+        max_delta = max(abs(dx), abs(dy), abs(dz))
+        steps = max(1, math.ceil(max_delta / CARTESIAN_SEGMENT_M))
+        step_dx, step_dy, step_dz = dx / steps, dy / steps, dz / steps
+        last_fraction = 1.0
 
-        trajectory, fraction = self._plan_cartesian_path(
-            group='right_arm',
-            link=RIGHT_EE_LINK,
-            waypoints=[start_pose, target_pose],
-            eef_step=eef_step,
-            jump_threshold=jump_threshold,
-        )
-        if fraction < min_fraction:
-            raise RuntimeError(
-                f'Cartesian path achieved only {fraction:.1%} '
-                f'(required {min_fraction:.1%})'
+        for _ in range(steps):
+            start_pose = self._lookup_pose(PLANNING_FRAME, RIGHT_EE_LINK)
+            target_pose = self._offset_pose(
+                start_pose, step_dx, step_dy, step_dz, frame=frame
             )
-        self._execute_trajectory(trajectory)
-        return fraction
+            trajectory, fraction = self._plan_cartesian_path(
+                group='right_arm',
+                link=RIGHT_EE_LINK,
+                waypoints=[target_pose],
+                eef_step=eef_step,
+                jump_threshold=jump_threshold,
+                avoid_collisions=avoid_collisions,
+            )
+            last_fraction = fraction
+            if fraction < min_fraction:
+                raise RuntimeError(
+                    f'Cartesian path achieved only {fraction:.1%} '
+                    f'(required {min_fraction:.1%})'
+                )
+            self._execute_trajectory(trajectory)
+        return last_fraction
 
     def _build_joint_goal_request(
         self,
@@ -151,6 +195,7 @@ class MoveGroupClient:
         waypoints: Iterable[Pose],
         eef_step: float,
         jump_threshold: float,
+        avoid_collisions: bool,
     ):
         request = GetCartesianPath.Request()
         request.header.frame_id = PLANNING_FRAME
@@ -159,7 +204,7 @@ class MoveGroupClient:
         request.waypoints = list(waypoints)
         request.max_step = float(eef_step)
         request.jump_threshold = float(jump_threshold)
-        request.avoid_collisions = True
+        request.avoid_collisions = avoid_collisions
         request.start_state = RobotState()
         request.start_state.is_diff = True
 
@@ -302,8 +347,9 @@ class LiteArmMotion:
         dz: float,
         *,
         frame: str = 'ee',
-        eef_step: float = 0.01,
+        eef_step: float = 0.005,
         min_fraction: float = 0.95,
+        avoid_collisions: bool = False,
     ) -> float:
         """Translate right arm EE by meters in EE-local or world frame."""
         return self._client.translate_right_arm(
@@ -313,4 +359,5 @@ class LiteArmMotion:
             frame=frame,
             eef_step=eef_step,
             min_fraction=min_fraction,
+            avoid_collisions=avoid_collisions,
         )

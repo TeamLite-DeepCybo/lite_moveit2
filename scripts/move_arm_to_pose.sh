@@ -77,4 +77,11 @@ if ! ros2 node list 2>/dev/null | grep -q move_group; then
   exit 1
 fi
 
+# Python client waits for trajectory controllers; quick sanity check here.
+if ! ros2 control list_controllers 2>/dev/null | grep -E '^right_arm_controller[[:space:]].*active' >/dev/null; then
+  echo "error: right_arm_controller not active yet." >&2
+  echo "Wait ~60s after demo start, or run: ${WS_ROOT}/scripts/check_moveit.sh" >&2
+  exit 1
+fi
+
 exec ros2 run lite_moveit2 move_to_pose "$@"
