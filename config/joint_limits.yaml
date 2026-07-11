@@ -11,80 +11,80 @@ joint_limits:
   left_elbow_pitch:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_gripper:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_shoulder_pitch:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_shoulder_roll:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_shoulder_yaw:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_wrist_pitch:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_wrist_roll:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_wrist_yaw:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_elbow_pitch:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_gripper:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_shoulder_pitch:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_shoulder_roll:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_shoulder_yaw:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_wrist_pitch:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_wrist_roll:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_wrist_yaw:
     has_velocity_limits: true
     max_velocity: 1.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
