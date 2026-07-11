@@ -13,7 +13,7 @@
 #
 # Known pose names (see config/lite_000_asm.srdf):
 #   home, left_home, right_home, idle, ready, selfie
-set -euo pipefail
+set -eo pipefail
 
 usage() {
   cat <<EOF
@@ -67,12 +67,8 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
 fi
 
 # shellcheck source=/dev/null
-source /opt/ros/jazzy/setup.bash
-# shellcheck source=/dev/null
-source "${WS_ROOT}/install/setup.bash"
-
-# shellcheck source=/dev/null
-source "${WS_ROOT}/install/setup.bash"
+source "${WS_ROOT}/scripts/ros_env.sh"
+ros_source_env "${WS_ROOT}"
 
 if ! ros2 node list 2>/dev/null | grep -q move_group; then
   echo "error: move_group is not running." >&2

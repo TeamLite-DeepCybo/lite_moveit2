@@ -9,7 +9,7 @@
 # Examples:
 #   translate_right_arm.sh --dx 0.1 --frame ee
 #   translate_right_arm.sh --dz -0.05 --frame world
-set -euo pipefail
+set -eo pipefail
 
 usage() {
   cat <<EOF
@@ -65,8 +65,7 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
 fi
 
 # shellcheck source=/dev/null
-source /opt/ros/jazzy/setup.bash
-# shellcheck source=/dev/null
-source "${WS_ROOT}/install/setup.bash"
+source "${WS_ROOT}/scripts/ros_env.sh"
+ros_source_env "${WS_ROOT}"
 
 exec ros2 run lite_moveit2 translate_right_arm "$@"
