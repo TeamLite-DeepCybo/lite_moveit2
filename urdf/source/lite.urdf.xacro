@@ -12,6 +12,8 @@
     <xacro:arg name="can_interface_left" default="can0"/>
     <xacro:arg name="can_interface_right" default="can1"/>
     <xacro:arg name="calibration_file" default=""/>
+    <!-- Per-finger prismatic travel (m); normalized left/right_gripper is [0, 1]. -->
+    <xacro:property name="gripper_finger_travel_m" value="0.047"/>
     <xacro:include filename="lite.ros2_control.xacro"/>
 
     <link name="right_wrist_yaw_motor_link">
@@ -485,6 +487,20 @@
             <inertia ixx="1e-12" ixy="0" ixz="0" iyy="1e-12" iyz="0" izz="1e-12" />
         </inertial>
     </link>
+    <link name="left_gripper_joint_link">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <mass value="1e-9" />
+            <inertia ixx="1e-12" ixy="0" ixz="0" iyy="1e-12" iyz="0" izz="1e-12" />
+        </inertial>
+    </link>
+    <link name="right_gripper_joint_link">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <mass value="1e-9" />
+            <inertia ixx="1e-12" ixy="0" ixz="0" iyy="1e-12" iyz="0" izz="1e-12" />
+        </inertial>
+    </link>
     <joint name="left_shoulder_pitch" type="revolute">
         <parent link="world_root" />
         <child link="left_shoulder_pitch_link" />
@@ -655,27 +671,53 @@
     </joint>
     <joint name="left_gripper" type="prismatic">
         <parent link="left_wrist_pitch_link" />
-        <child link="left_gripper_finger_left_link" />
-        <origin xyz="0.1040961904 -0.04585909073 -0.01258790935" rpy="1.5708 -0.0698132 0.845028" />
+        <child link="left_gripper_joint_link" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
         <axis xyz="1 0 0" />
-        <limit lower="0" upper="0.047" effort="1" velocity="1" />
+        <limit lower="0" upper="1" effort="1" velocity="1" />
         <hardware>
             <motorType>None</motorType>
             <motorDirection>1</motorDirection>
             <armature>0</armature>
         </hardware>
     </joint>
-    <joint name="right_gripper" type="prismatic">
-        <parent link="right_wrist_pitch_link" />
-        <child link="right_gripper_finger_left_link" />
-        <origin xyz="0.113421574 -0.009254971529 -0.01265282701" rpy="1.5708 -0.0698132 1.17725" />
+    <joint name="left_gripper_finger_left_joint" type="prismatic">
+        <parent link="left_wrist_pitch_link" />
+        <child link="left_gripper_finger_left_link" />
+        <origin xyz="0.1040961904 -0.04585909073 -0.01258790935" rpy="1.5708 -0.0698132 0.845028" />
         <axis xyz="1 0 0" />
-        <limit lower="0" upper="0.047" effort="1" velocity="1" />
+        <limit lower="0" upper="${gripper_finger_travel_m}" effort="1" velocity="1" />
         <hardware>
             <motorType>None</motorType>
             <motorDirection>1</motorDirection>
             <armature>0</armature>
         </hardware>
+        <mimic joint="left_gripper" multiplier="${gripper_finger_travel_m}" offset="0" />
+    </joint>
+    <joint name="right_gripper" type="prismatic">
+        <parent link="right_wrist_pitch_link" />
+        <child link="right_gripper_joint_link" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <axis xyz="1 0 0" />
+        <limit lower="0" upper="1" effort="1" velocity="1" />
+        <hardware>
+            <motorType>None</motorType>
+            <motorDirection>1</motorDirection>
+            <armature>0</armature>
+        </hardware>
+    </joint>
+    <joint name="right_gripper_finger_left_joint" type="prismatic">
+        <parent link="right_wrist_pitch_link" />
+        <child link="right_gripper_finger_left_link" />
+        <origin xyz="0.113421574 -0.009254971529 -0.01265282701" rpy="1.5708 -0.0698132 1.17725" />
+        <axis xyz="1 0 0" />
+        <limit lower="0" upper="${gripper_finger_travel_m}" effort="1" velocity="1" />
+        <hardware>
+            <motorType>None</motorType>
+            <motorDirection>1</motorDirection>
+            <armature>0</armature>
+        </hardware>
+        <mimic joint="right_gripper" multiplier="${gripper_finger_travel_m}" offset="0" />
     </joint>
     <joint name="left_gripper_passive_joint" type="prismatic">
         <parent link="left_wrist_pitch_link" />
@@ -688,7 +730,7 @@
             <motorDirection>1</motorDirection>
             <armature>0</armature>
         </hardware>
-        <mimic joint="left_gripper" multiplier="1" offset="0" />
+        <mimic joint="left_gripper" multiplier="${gripper_finger_travel_m}" offset="0" />
     </joint>
     <joint name="right_gripper_passive_joint" type="prismatic">
         <parent link="right_wrist_pitch_link" />
@@ -701,7 +743,7 @@
             <motorDirection>1</motorDirection>
             <armature>0</armature>
         </hardware>
-        <mimic joint="right_gripper" multiplier="1" offset="0" />
+        <mimic joint="right_gripper" multiplier="${gripper_finger_travel_m}" offset="0" />
     </joint>
     <joint name="head_camera_joint" type="fixed">
         <parent link="world_root" />

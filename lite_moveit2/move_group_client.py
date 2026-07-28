@@ -4,24 +4,39 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Iterable
+from typing import Iterable, Optional
 
 import rclpy
 from controller_manager_msgs.srv import ListControllers
 from rclpy.action import ActionClient
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseStamped
 from moveit_msgs.action import ExecuteTrajectory, MoveGroup
-from moveit_msgs.msg import Constraints, JointConstraint, MoveItErrorCodes, RobotState
-from moveit_msgs.srv import GetCartesianPath
+from moveit_msgs.msg import (
+    Constraints,
+    JointConstraint,
+    MoveItErrorCodes,
+    PositionIKRequest,
+    RobotState,
+)
+from moveit_msgs.srv import GetCartesianPath, GetPositionFK, GetPositionIK
+from sensor_msgs.msg import JointState
 from tf2_ros import Buffer, TransformListener
 
 from .srdf_states import get_named_state, normalize_arm_group
 
 SUCCESS = MoveItErrorCodes.SUCCESS
 
+LEFT_EE_LINK = 'left_gripper_tip_middle_link'
 RIGHT_EE_LINK = 'right_gripper_tip_middle_link'
+EE_LINKS = {
+    'left_arm': LEFT_EE_LINK,
+    'right_arm': RIGHT_EE_LINK,
+    'left': LEFT_EE_LINK,
+    'right': RIGHT_EE_LINK,
+}
 PLANNING_FRAME = 'world'
 CARTESIAN_SEGMENT_M = 0.02
 REQUIRED_ACTIVE_CONTROLLERS = (
@@ -34,13 +49,29 @@ REQUIRED_ACTIVE_CONTROLLERS = (
 class MoveGroupClient:
     """Thin wrapper around move_group plan / execute interfaces."""
 
-    def __init__(self, node: Node) -> None:
+    def __init__(
+        self,
+        node: Node,
+        *,
+        callback_group: Optional[ReentrantCallbackGroup] = None,
+    ) -> None:
         self._node = node
         self._logger = node.get_logger()
+        self._cb_group = callback_group
         self._move_client = ActionClient(node, MoveGroup, '/move_action')
         self._execute_client = ActionClient(node, ExecuteTrajectory, '/execute_trajectory')
         self._cartesian_client = node.create_client(
             GetCartesianPath, '/compute_cartesian_path'
+        )
+        self._ik_client = node.create_client(
+            GetPositionIK,
+            '/compute_ik',
+            callback_group=callback_group,
+        )
+        self._fk_client = node.create_client(
+            GetPositionFK,
+            '/compute_fk',
+            callback_group=callback_group,
         )
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, node)
@@ -53,6 +84,95 @@ class MoveGroupClient:
         if not self._cartesian_client.wait_for_service(timeout_sec=timeout_sec):
             raise RuntimeError('service /compute_cartesian_path not available')
         self._wait_for_controllers(timeout_sec=max(timeout_sec, 90.0))
+
+    def wait_for_ik_service(self, timeout_sec: float = 30.0) -> None:
+        if not self._ik_client.wait_for_service(timeout_sec=timeout_sec):
+            raise RuntimeError('service /compute_ik not available')
+        # FK is optional but preferred for relative retarget anchors.
+        self._fk_client.wait_for_service(timeout_sec=min(timeout_sec, 5.0))
+
+    def _wait_service_result(self, future, wait_timeout_sec: float):
+        if self._cb_group is not None:
+            deadline = time.monotonic() + wait_timeout_sec
+            while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+                time.sleep(0.001)
+            if not future.done():
+                return None
+            try:
+                return future.result()
+            except Exception:
+                return None
+        rclpy.spin_until_future_complete(
+            self._node, future, timeout_sec=wait_timeout_sec
+        )
+        if not future.done():
+            return None
+        return future.result()
+
+    def compute_fk(
+        self,
+        arm: str,
+        joint_state: JointState,
+        *,
+        wait_timeout_sec: float = 1.0,
+    ) -> Optional[PoseStamped]:
+        """Forward kinematics for an arm tip link given joint positions."""
+        group = normalize_arm_group(arm)
+        ee_link = EE_LINKS[group]
+        request = GetPositionFK.Request()
+        request.header.frame_id = PLANNING_FRAME
+        request.fk_link_names = [ee_link]
+        request.robot_state = RobotState()
+        request.robot_state.joint_state = joint_state
+        request.robot_state.is_diff = False
+
+        future = self._fk_client.call_async(request)
+        response = self._wait_service_result(future, wait_timeout_sec)
+        if response is None or response.error_code.val != SUCCESS:
+            return None
+        if not response.pose_stamped:
+            return None
+        return response.pose_stamped[0]
+
+    def compute_ik(
+        self,
+        arm: str,
+        pose_stamped: PoseStamped,
+        *,
+        seed_state: Optional[JointState] = None,
+        avoid_collisions: bool = False,
+        timeout_sec: float = 0.05,
+        wait_timeout_sec: float = 0.2,
+    ) -> Optional[JointState]:
+        """Solve absolute EE pose IK via ``/compute_ik``. Returns None on failure."""
+        group = normalize_arm_group(arm)
+        ee_link = EE_LINKS[group]
+
+        request = GetPositionIK.Request()
+        ik_req = PositionIKRequest()
+        ik_req.group_name = group
+        ik_req.ik_link_name = ee_link
+        ik_req.pose_stamped = pose_stamped
+        if not ik_req.pose_stamped.header.frame_id:
+            ik_req.pose_stamped.header.frame_id = PLANNING_FRAME
+        ik_req.avoid_collisions = avoid_collisions
+        ik_req.timeout.sec = int(timeout_sec)
+        ik_req.timeout.nanosec = int((timeout_sec - int(timeout_sec)) * 1e9)
+        ik_req.robot_state = RobotState()
+        if seed_state is not None:
+            ik_req.robot_state.joint_state = seed_state
+            ik_req.robot_state.is_diff = False
+        else:
+            ik_req.robot_state.is_diff = True
+        request.ik_request = ik_req
+
+        future = self._ik_client.call_async(request)
+        response = self._wait_service_result(future, wait_timeout_sec)
+        if response is None:
+            return None
+        if response.error_code.val != SUCCESS:
+            return None
+        return response.solution.joint_state
 
     def _wait_for_controllers(self, timeout_sec: float) -> None:
         deadline = time.monotonic() + timeout_sec
@@ -136,6 +256,63 @@ class MoveGroupClient:
                 )
             self._execute_trajectory(trajectory)
         return last_fraction
+
+    def compute_ik(
+        self,
+        arm: str,
+        pose_stamped: PoseStamped,
+        *,
+        seed_state: Optional[JointState] = None,
+        avoid_collisions: bool = False,
+        timeout_sec: float = 0.05,
+        wait_timeout_sec: float = 0.2,
+    ) -> Optional[JointState]:
+        """Solve absolute EE pose IK via ``/compute_ik``. Returns None on failure."""
+        group = normalize_arm_group(arm)
+        ee_link = EE_LINKS[group]
+
+        request = GetPositionIK.Request()
+        ik_req = PositionIKRequest()
+        ik_req.group_name = group
+        ik_req.ik_link_name = ee_link
+        ik_req.pose_stamped = pose_stamped
+        if not ik_req.pose_stamped.header.frame_id:
+            ik_req.pose_stamped.header.frame_id = PLANNING_FRAME
+        ik_req.avoid_collisions = avoid_collisions
+        ik_req.timeout.sec = int(timeout_sec)
+        ik_req.timeout.nanosec = int((timeout_sec - int(timeout_sec)) * 1e9)
+        ik_req.robot_state = RobotState()
+        if seed_state is not None:
+            ik_req.robot_state.joint_state = seed_state
+            ik_req.robot_state.is_diff = False
+        else:
+            ik_req.robot_state.is_diff = True
+        request.ik_request = ik_req
+
+        future = self._ik_client.call_async(request)
+        if self._cb_group is not None:
+            deadline = time.monotonic() + wait_timeout_sec
+            while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+                time.sleep(0.001)
+            if not future.done():
+                return None
+            try:
+                response = future.result()
+            except Exception:
+                return None
+        else:
+            rclpy.spin_until_future_complete(
+                self._node, future, timeout_sec=wait_timeout_sec
+            )
+            if not future.done():
+                return None
+            response = future.result()
+
+        if response is None:
+            return None
+        if response.error_code.val != SUCCESS:
+            return None
+        return response.solution.joint_state
 
     def _build_joint_goal_request(
         self,
@@ -318,11 +495,19 @@ class MoveGroupClient:
 class LiteArmMotion:
     """High-level API intended for Agent function-calling wrappers."""
 
-    def __init__(self, node: Node) -> None:
-        self._client = MoveGroupClient(node)
+    def __init__(
+        self,
+        node: Node,
+        *,
+        callback_group: Optional[ReentrantCallbackGroup] = None,
+    ) -> None:
+        self._client = MoveGroupClient(node, callback_group=callback_group)
 
     def wait_for_servers(self, timeout_sec: float = 30.0) -> None:
         self._client.wait_for_servers(timeout_sec=timeout_sec)
+
+    def wait_for_ik_service(self, timeout_sec: float = 30.0) -> None:
+        self._client.wait_for_ik_service(timeout_sec=timeout_sec)
 
     def move_arm_to_pose(
         self,
@@ -360,4 +545,24 @@ class LiteArmMotion:
             eef_step=eef_step,
             min_fraction=min_fraction,
             avoid_collisions=avoid_collisions,
+        )
+
+    def compute_ik(
+        self,
+        arm: str,
+        pose_stamped: PoseStamped,
+        *,
+        seed_state: Optional[JointState] = None,
+        avoid_collisions: bool = False,
+        timeout_sec: float = 0.05,
+        wait_timeout_sec: float = 0.2,
+    ) -> Optional[JointState]:
+        """Solve absolute EE pose IK. Returns joint state or None."""
+        return self._client.compute_ik(
+            arm,
+            pose_stamped,
+            seed_state=seed_state,
+            avoid_collisions=avoid_collisions,
+            timeout_sec=timeout_sec,
+            wait_timeout_sec=wait_timeout_sec,
         )
