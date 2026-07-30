@@ -257,63 +257,6 @@ class MoveGroupClient:
             self._execute_trajectory(trajectory)
         return last_fraction
 
-    def compute_ik(
-        self,
-        arm: str,
-        pose_stamped: PoseStamped,
-        *,
-        seed_state: Optional[JointState] = None,
-        avoid_collisions: bool = False,
-        timeout_sec: float = 0.05,
-        wait_timeout_sec: float = 0.2,
-    ) -> Optional[JointState]:
-        """Solve absolute EE pose IK via ``/compute_ik``. Returns None on failure."""
-        group = normalize_arm_group(arm)
-        ee_link = EE_LINKS[group]
-
-        request = GetPositionIK.Request()
-        ik_req = PositionIKRequest()
-        ik_req.group_name = group
-        ik_req.ik_link_name = ee_link
-        ik_req.pose_stamped = pose_stamped
-        if not ik_req.pose_stamped.header.frame_id:
-            ik_req.pose_stamped.header.frame_id = PLANNING_FRAME
-        ik_req.avoid_collisions = avoid_collisions
-        ik_req.timeout.sec = int(timeout_sec)
-        ik_req.timeout.nanosec = int((timeout_sec - int(timeout_sec)) * 1e9)
-        ik_req.robot_state = RobotState()
-        if seed_state is not None:
-            ik_req.robot_state.joint_state = seed_state
-            ik_req.robot_state.is_diff = False
-        else:
-            ik_req.robot_state.is_diff = True
-        request.ik_request = ik_req
-
-        future = self._ik_client.call_async(request)
-        if self._cb_group is not None:
-            deadline = time.monotonic() + wait_timeout_sec
-            while rclpy.ok() and not future.done() and time.monotonic() < deadline:
-                time.sleep(0.001)
-            if not future.done():
-                return None
-            try:
-                response = future.result()
-            except Exception:
-                return None
-        else:
-            rclpy.spin_until_future_complete(
-                self._node, future, timeout_sec=wait_timeout_sec
-            )
-            if not future.done():
-                return None
-            response = future.result()
-
-        if response is None:
-            return None
-        if response.error_code.val != SUCCESS:
-            return None
-        return response.solution.joint_state
-
     def _build_joint_goal_request(
         self,
         group: str,
