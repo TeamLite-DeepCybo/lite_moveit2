@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  industrial_ci:
+    runs-on: ubuntu-24.04
+    env:
+      ROS_DISTRO: jazzy
+      ROS_REPO: main
+    steps:
+      - uses: actions/checkout@v5
+
+      # Build the lite_moveit2 package and run smoke checks inside the
+      # industrial_ci Jazzy container (see AFTER_BUILD below).
+      - uses: 'ros-industrial/industrial_ci@master'
+        env:
+          BUILDER_ARGS: >-
+            --packages-select
+            lite_moveit2
+          AFTER_BUILD: |
+            set -euo pipefail
+            source /opt/ros/jazzy/setup.bash
+            source install/setup.bash
+
+            echo '--- Python module import ---'
+            python3 -c "from lite_moveit2.move_group_client import LiteArmMotion, MoveGroupClient; from lite_moveit2.srdf_states import load_named_states; print('module import OK')"
+
+            echo '--- SRDF / URDF parse ---'
+            PKG="$(ros2 pkg prefix lite_moveit2)"
+            xmllint --noout "$PKG/share/lite_moveit2/config/lite_000_asm.srdf"
+            xacro "$PKG/share/lite_moveit2/config/lite_000_asm.urdf.xacro" > /tmp/lite_000_asm_resolved.xml
+            xmllint --noout /tmp/lite_000_asm_resolved.xml
+
+            echo '--- launch file parse ---'
+            for l in demo demo_planning move_group moveit_rviz rsp spawn_controllers static_virtual_joint_tfs warehouse_db setup_assistant; do
+              ros2 launch lite_moveit2 "$l.launch.py" --show-args > /dev/null
+            done
+
+            echo 'All smoke checks passed.'
