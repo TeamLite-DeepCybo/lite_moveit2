@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up ROS 2 Jazzy
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: jazzy
+
+      - name: Build release package
+        run: |
+          set -euo pipefail
+          source /opt/ros/jazzy/setup.bash
+          sudo rosdep init || true
+          rosdep update
+          rosdep install --from-paths . --ignore-src -r -y
+          colcon build \
+            --packages-select lite_moveit2 \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
+          source install/setup.bash
+
+          PKG_VERSION="$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' package.xml | head -1)"
+          ASSET="lite_moveit2_${PKG_VERSION}_jazzy_ubuntu24.04.tar.xz"
+          tar -cJf "$ASSET" install/lite_moveit2
+          echo "asset=$ASSET" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.asset }}
+          generate_release_notes: true
