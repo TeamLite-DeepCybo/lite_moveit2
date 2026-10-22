@@ -20,8 +20,6 @@ install(FILES
   urdf/lite.urdf
   urdf/README.md
   DESTINATION share/${PROJECT_NAME}/urdf)
-install(DIRECTORY urdf/source
-  DESTINATION share/${PROJECT_NAME}/urdf)
 install(PROGRAMS
   scripts/move_to_pose
   scripts/translate_right_arm
@@ -29,6 +27,11 @@ install(PROGRAMS
 install(PROGRAMS
   scripts/move_arm_to_pose.sh
   scripts/translate_right_arm.sh
+  DESTINATION share/${PROJECT_NAME}/scripts)
+# URDF/mesh generation tooling, so downstream packages can reproduce the model.
+install(PROGRAMS
+  scripts/generate_planning_urdf.py
+  scripts/check_srdf_limits.py
   DESTINATION share/${PROJECT_NAME}/scripts)
 install(FILES .setup_assistant DESTINATION share/${PROJECT_NAME})
 

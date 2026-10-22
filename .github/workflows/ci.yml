@@ -14,6 +14,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Guards the regression described in urdf/README.md: `urdf/lite.urdf` was once a
+  # hand-carried snapshot that drifted from `lite_urdf` on `right_elbow_pitch`, which
+  # made every right-arm plan abort. Keep the planning model provably in sync.
+  urdf_drift:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: URDF / mesh drift vs lite_urdf submodule
+        run: python3 scripts/generate_planning_urdf.py --check
+
+      - name: SRDF named poses within URDF joint limits
+        run: python3 scripts/check_srdf_limits.py
+
   industrial_ci:
     runs-on: ubuntu-24.04
     env:
