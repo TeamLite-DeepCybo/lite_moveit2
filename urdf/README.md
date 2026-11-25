@@ -1,38 +1,36 @@
 # Lite MoveIt Planning URDF Snapshot
 
-Self-contained planning model for MoveIt 2, isolated from `lite_ros2/lite_urdf`.
+Self-contained planning model for MoveIt 2.
 
 ## Contents
 
 | Path | Purpose |
 |------|---------|
 | `lite.urdf` | Flattened planning URDF (`emit_ros2_control:=false`) |
-| `meshes/` | STL assets referenced by `lite.urdf` (23 files) |
-| `source/` | Upstream xacro snapshot for traceability only |
+| `meshes/` | STL assets referenced by `lite.urdf` (22 referenced assets) |
+| `source/` | Historical upstream xacro snapshot |
 
 ## Source
 
-Exported from `lite_ros2/lite_urdf` submodule:
+The active snapshot uses the `lite_description20261117` link and joint
+definitions imported into `lite_description/urdf/lite.urdf.xacro`. It includes
+the updated wrist, finger, camera and base meshes and all three camera mounts.
 
-- Commit: `29e947263f8d226553fff13dc7f6633ee9d7f5bd`
-- Branch: `fix/gripper-si-position-units`
-- Robot name: `lite_000_asm`
-- Mode: `arms_grippers`
-
-Regenerate:
+Regenerate from the active workspace:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-xacro /path/to/lite_ros2/lite_urdf/urdf/lite.urdf.xacro \
+xacro src/lite_motor_controller/lite_description/urdf/lite.urdf.xacro \
   emit_ros2_control:=false \
   use_fake_hardware:=true \
   use_sim:=false \
   mode:=arms_grippers \
-  | sed 's|package://lite_urdf/meshes/|package://lite_moveit2/meshes/|g' \
-  > lite.urdf
+  | sed 's|package://lite_description/meshes/|package://lite_moveit2/meshes/|g' \
+  > .lite-d1/lite_moveit2/urdf/lite.urdf
 ```
 
-Then recopy meshes listed in `lite.urdf` into `meshes/`.
+Copy the meshes referenced by `lite.urdf` from `lite_description/meshes/`
+into this package's `urdf/meshes/`. The fixed head-camera/base pair shares
+its mount geometry and is marked adjacent in the SRDF.
 
 ## Mesh URI Convention
 
